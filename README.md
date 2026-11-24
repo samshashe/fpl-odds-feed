@@ -1,9 +1,11 @@
 # fpl-odds-feed
 
-Bookmaker-derived Premier League projections for the FPL Difficulty app's
-**Difficulty > Odds** view, published as a static JSON file:
+Static JSON files for the FPL Difficulty app, published to GitHub Pages:
 
-https://samshashe.github.io/fpl-odds-feed/team-projections.json
+- https://samshashe.github.io/fpl-odds-feed/team-projections.json - bookmaker-derived
+  Premier League projections (Difficulty > Odds, expected points).
+- https://samshashe.github.io/fpl-odds-feed/player-priors.json - each player's last two
+  seasons, which the app's expected points start from (see below).
 
 ## How it works
 
@@ -22,6 +24,27 @@ https://samshashe.github.io/fpl-odds-feed/team-projections.json
    `team-projections.json` to GitHub Pages.
 
 The API key only lives in this repo's Actions secrets; the app never sees it.
+
+## Player priors
+
+`scripts/build-priors.mjs` runs in the same workflow (one Pages site, so every deploy has to
+carry both files). It fetches every player's `element-summary` (`history_past`, ~700 requests,
+a few seconds) about once a day - otherwise it re-publishes the current file - and keeps the
+last two seasons with minutes:
+
+```json
+{
+  "version": 1, "season": "2026", "generatedAt": "...",
+  "fields": ["minutes", "starts", "goals_scored", "assists", "expected_goals", "expected_assists",
+             "expected_goals_conceded", "clean_sheets", "bonus", "yellow_cards", "red_cards",
+             "saves", "defensive_contribution", "total_points"],
+  "players": { "<fpl element id>": { "code": 223094,
+    "seasons": [{ "season": "2025/26", "v": [2953, 34, 27, 8, 25.5, ...] }, { "season": "2024/25", "v": [...] }] } }
+}
+```
+
+If more than 10% of the requests fail it keeps the previously published file.
+`OUT_DIR=site node scripts/build-priors.mjs` builds it locally (no key needed).
 
 ## Setup
 
