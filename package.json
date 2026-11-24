@@ -4,6 +4,7 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "build": "node scripts/build-projections.mjs"
+    "build": "node scripts/build-projections.mjs",
+    "build:priors": "node scripts/build-priors.mjs"
   }
 }

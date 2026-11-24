@@ -35,6 +35,13 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/team-projections.json
           OUT_DIR: site
+      # Same Pages site, so every deploy carries both files; rebuilt about once a day.
+      - name: Build player-priors.json
+        continue-on-error: true
+        run: node scripts/build-priors.mjs
+        env:
+          PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/player-priors.json
+          OUT_DIR: site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
