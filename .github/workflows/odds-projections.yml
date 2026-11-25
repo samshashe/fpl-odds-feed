@@ -24,7 +24,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Scheduled runs only work while a fixture is coming up (scripts/season-active.mjs);
+  # between seasons they stop here. A manual run always publishes.
+  season:
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.check.outputs.active }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - id: check
+        run: node scripts/season-active.mjs
+
   publish:
+    needs: season
+    if: github.event_name == 'workflow_dispatch' || needs.season.outputs.active == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

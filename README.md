@@ -9,7 +9,10 @@ Static JSON files for the FPL Difficulty app, published to GitHub Pages:
 
 ## How it works
 
-`.github/workflows/odds-projections.yml` runs three times a day (and on demand):
+`.github/workflows/odds-projections.yml` runs three times a day (and on demand). A scheduled
+run first checks the FPL fixtures (`scripts/season-active.mjs`) and stops there unless a
+fixture kicks off within 21 days, so between seasons it uses no odds credits and doesn't
+redeploy, and it resumes before GW1 by itself; a manual run always publishes:
 
 1. Fetches EPL 1X2 and over/under odds from [The Odds API](https://the-odds-api.com)
    (`soccer_epl`, markets `h2h,totals`, region `eu`: 2 credits per run, ~180 of
