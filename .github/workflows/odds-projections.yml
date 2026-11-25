@@ -8,6 +8,11 @@ on:
     # 3 runs/day x 2 markets x 1 region = ~180 of the free 500 monthly credits.
     - cron: "17 5,13,21 * * *"
   workflow_dispatch:
+    inputs:
+      full_rebuild:
+        description: "Refetch every player's past seasons for player-priors.json"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,7 +24,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Scheduled runs only work while a fixture is coming up (scripts/season-active.mjs);
+  # between seasons they stop here. A manual run always publishes.
+  season:
+    runs-on: ubuntu-latest
+    outputs:
+      active: ${{ steps.check.outputs.active }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - id: check
+        run: node scripts/season-active.mjs
+
   publish:
+    needs: season
+    if: github.event_name == 'workflow_dispatch' || needs.season.outputs.active == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -36,12 +58,14 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/team-projections.json
           OUT_DIR: site
-      # Same Pages site, so every deploy carries both files; rebuilt about once a day.
+      # Same Pages site, so every deploy carries both files. Incremental: only new
+      # players are fetched; a full rebuild when the season changes.
       - name: Build player-priors.json
         continue-on-error: true
         run: node scripts/build-priors.mjs
         env:
           PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/player-priors.json
+          FULL_REBUILD: ${{ inputs.full_rebuild && '1' || '' }}
           OUT_DIR: site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

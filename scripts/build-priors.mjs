@@ -4,10 +4,14 @@
 // .github/workflows/odds-projections.yml next to the projections build (one
 // Pages site, so every deploy must carry both files).
 //
+// Past seasons don't change, so within a season it's incremental: players
+// already in the published file (or listed in `noHistory`) are kept and only
+// new ones (e.g. January signings) are fetched; nothing new = no requests.
+// A full rebuild happens when the season changes or with FULL_REBUILD=1.
+//
 // Env:
-//   PREVIOUS_URL       the currently published player-priors.json; reused as is
-//                      while it is younger than MAX_AGE_HOURS and the season matches
-//   MAX_AGE_HOURS      default 20 (so one of the three daily runs rebuilds it)
+//   PREVIOUS_URL       the currently published player-priors.json
+//   FULL_REBUILD       "1" to refetch every player
 //   OUT_DIR            output directory, default "site"
 //   CONCURRENCY        parallel element-summary requests, default 6
 //   FPL_BOOTSTRAP_JSON / PREVIOUS_JSON  local files instead of the network
@@ -37,7 +41,6 @@ const FIELDS = [
 ];
 
 const env = process.env;
-const maxAgeMs = Number(env.MAX_AGE_HOURS || 20) * 60 * 60 * 1000;
 const concurrency = Number(env.CONCURRENCY || 6);
 const outDir = env.OUT_DIR || "site";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -97,36 +100,42 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const outFile = path.join(outDir, "player-priors.json");
 
-  const fresh =
-    previous?.season === season &&
-    Date.now() - new Date(previous.generatedAt).getTime() < maxAgeMs;
-  if (fresh) {
+  const full = env.FULL_REBUILD === "1" || previous?.season !== season || !previous?.players;
+  const kept = full ? {} : previous.players;
+  const noHistory = new Set(full ? [] : previous.noHistory || []);
+  const elements = bootstrap.elements;
+  const todo = elements.filter((e) => !kept[e.id] && !noHistory.has(e.id));
+  if (!full && !todo.length) {
     await writeFile(outFile, JSON.stringify(previous));
-    console.log(`Reused priors from ${previous.generatedAt} (${Object.keys(previous.players).length} players).`);
+    console.log(`No new players; reused priors from ${previous.generatedAt}.`);
     return;
   }
 
-  const elements = bootstrap.elements;
   const started = Date.now();
-  const results = await mapLimited(elements, concurrency, (element) =>
+  const results = await mapLimited(todo, concurrency, (element) =>
     getJson(`${FPL_BASE}element-summary/${element.id}/`),
   );
   const failures = results.filter((r) => !r.ok).length;
-  if (failures > elements.length * MAX_FAILURE_SHARE && previous?.players) {
-    console.log(`${failures} of ${elements.length} requests failed; keeping the previous priors.`);
+  if (full && failures > todo.length * MAX_FAILURE_SHARE && previous?.players) {
+    console.log(`${failures} of ${todo.length} requests failed; keeping the previous priors.`);
     await writeFile(outFile, JSON.stringify(previous));
     return;
   }
 
-  const players = {};
+  const current = new Set(elements.map((e) => e.id));
+  const players = Object.fromEntries(
+    Object.entries(kept).filter(([id]) => current.has(Number(id))),
+  );
   results.forEach((result, index) => {
     if (!result.ok) return;
+    const element = todo[index];
     const seasons = (result.value.history_past || [])
       .slice(-SEASONS_KEPT)
       .reverse()
       .filter((s) => Number(s.minutes) > 0)
       .map((s) => ({ season: s.season_name, v: FIELDS.map((f) => round(s[f])) }));
-    if (seasons.length) players[elements[index].id] = { code: elements[index].code, seasons };
+    if (seasons.length) players[element.id] = { code: element.code, seasons };
+    else noHistory.add(element.id);
   });
 
   const output = {
@@ -135,10 +144,11 @@ async function main() {
     generatedAt: new Date().toISOString(),
     fields: FIELDS,
     players,
+    noHistory: [...noHistory].filter((id) => current.has(id)).sort((a, b) => a - b),
   };
   await writeFile(outFile, JSON.stringify(output));
   console.log(
-    `Priors for ${Object.keys(players).length} of ${elements.length} players (${failures} failed) in ${Math.round((Date.now() - started) / 1000)}s.`,
+    `${full ? "Full rebuild" : "Incremental"}: fetched ${todo.length} (${failures} failed, retried next run); priors for ${Object.keys(players).length} of ${elements.length} players in ${Math.round((Date.now() - started) / 1000)}s.`,
   );
 }
 
