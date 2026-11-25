@@ -8,6 +8,11 @@ on:
     # 3 runs/day x 2 markets x 1 region = ~180 of the free 500 monthly credits.
     - cron: "17 5,13,21 * * *"
   workflow_dispatch:
+    inputs:
+      full_rebuild:
+        description: "Refetch every player's past seasons for player-priors.json"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,12 +41,14 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/team-projections.json
           OUT_DIR: site
-      # Same Pages site, so every deploy carries both files; rebuilt about once a day.
+      # Same Pages site, so every deploy carries both files. Incremental: only new
+      # players are fetched; a full rebuild when the season changes.
       - name: Build player-priors.json
         continue-on-error: true
         run: node scripts/build-priors.mjs
         env:
           PREVIOUS_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/player-priors.json
+          FULL_REBUILD: ${{ inputs.full_rebuild && '1' || '' }}
           OUT_DIR: site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

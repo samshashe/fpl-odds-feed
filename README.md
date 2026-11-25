@@ -28,9 +28,12 @@ The API key only lives in this repo's Actions secrets; the app never sees it.
 ## Player priors
 
 `scripts/build-priors.mjs` runs in the same workflow (one Pages site, so every deploy has to
-carry both files). It fetches every player's `element-summary` (`history_past`, ~700 requests,
-a few seconds) about once a day - otherwise it re-publishes the current file - and keeps the
-last two seasons with minutes:
+carry both files) and keeps each player's last two seasons with minutes (from
+`element-summary` `history_past`). Past seasons don't change, so within a season it is
+incremental: players already in the published file, or in `noHistory` (checked, no past
+seasons), are kept, and only new players (e.g. January signings) are fetched - most runs make
+no requests. A full rebuild (~700 requests, a few seconds) happens when the season changes, or
+run it with `FULL_REBUILD=1` (the workflow's manual run has a "full rebuild" checkbox):
 
 ```json
 {
@@ -39,11 +42,13 @@ last two seasons with minutes:
              "expected_goals_conceded", "clean_sheets", "bonus", "yellow_cards", "red_cards",
              "saves", "defensive_contribution", "total_points"],
   "players": { "<fpl element id>": { "code": 223094,
-    "seasons": [{ "season": "2025/26", "v": [2953, 34, 27, 8, 25.5, ...] }, { "season": "2024/25", "v": [...] }] } }
+    "seasons": [{ "season": "2025/26", "v": [2953, 34, 27, 8, 25.5, ...] }, { "season": "2024/25", "v": [...] }] } },
+  "noHistory": [12, 57, ...]
 }
 ```
 
-If more than 10% of the requests fail it keeps the previously published file.
+If more than 10% of a full rebuild's requests fail it keeps the previously published file;
+in an incremental run a failed player is simply fetched again next run.
 `OUT_DIR=site node scripts/build-priors.mjs` builds it locally (no key needed).
 
 ## Setup
